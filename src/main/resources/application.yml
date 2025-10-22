@@ -1,0 +1,13 @@
+server:
+  port: 8080
+
+app:
+  providers:
+    google:
+      api-key: AIzaSyDGDtv0AaT3lfhuGrJFXvkIj_h-Pqv-vOU   # 환경변수로 주입 권장
+    kakao:
+      rest-api-key: 5fef3a66ec6aa67b2ea7bdbd8caee84d # (선택) 없으면 카카오는 자동 비활성
+
+spring:
+  main:
+    web-application-type: servlet
