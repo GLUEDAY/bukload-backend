@@ -4,9 +4,9 @@ server:
 app:
   providers:
     google:
-      api-key: AIzaSyDGDtv0AaT3lfhuGrJFXvkIj_h-Pqv-vOU   # 환경변수로 주입 권장
+      api-key: ${GOOGLE_API_KEY}
     kakao:
-      rest-api-key: 5fef3a66ec6aa67b2ea7bdbd8caee84d # (선택) 없으면 카카오는 자동 비활성
+      rest-api-key: ${KAKAO_REST_API_KEY:}
 
 spring:
   main:
