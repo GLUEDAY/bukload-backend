@@ -59,11 +59,13 @@ public class KakaoLocalClient {
                 .lat(Double.parseDouble(d.getY()))
                 .lng(Double.parseDouble(d.getX()))
                 .address((d.getRoad_address_name() != null && !d.getRoad_address_name().isBlank())
-                        ? d.getRoad_address_name() : d.getAddress_name())
-                .rating(null)          // 카카오는 평점/리뷰수/홈페이지 미제공
+                        ? d.getRoad_address_name()
+                        : d.getAddress_name())
+                .rating(null)          // 보강 전
                 .reviewCount(null)
                 .homepageUrl(null)
-                .mapUrl(d.getPlace_url()) // ✅ 카카오 지도 링크
+                .mapUrl(d.getPlace_url()) // 기본: 카카오 지도 링크
+                .openNow(null)
                 .build());
     }
 }

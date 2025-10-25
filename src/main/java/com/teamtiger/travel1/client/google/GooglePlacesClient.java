@@ -1,7 +1,8 @@
 package com.teamtiger.travel1.client.google;
 
-import com.teamtiger.travel1.dto.PlaceResponse;
-import com.teamtiger.travel1.util.CategoryMapper;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -24,13 +25,21 @@ public class GooglePlacesClient {
 
     private boolean enabled() { return StringUtils.hasText(apiKey); }
 
-    public Optional<PlaceResponse> searchOneByText(String query) {
+    /**
+     * 카카오로 잡은 후보(name, address, lat, lng)를 바탕으로
+     * Google Text Search(+location bias)로 place_id 매칭 → Details 일부 필드만 조회.
+     */
+    public Optional<GoogleEnrichment> enrichByNameAndCoords(String name, String address, double lat, double lng) {
         if (!enabled()) {
             System.err.println("[Google] disabled (no apiKey)");
             return Optional.empty();
         }
 
-        // 1) Text Search — uriBuilder로 자동 인코딩
+        // 1) Text Search with location bias (결과 매칭 정확도 ↑)
+        //    참고: Text Search는 location+radius로 결과를 '바이어스' 할 수 있음.
+        //    query는 name + address를 합쳐 정확도 향상.
+        String query = (address == null || address.isBlank()) ? name : (name + " " + address);
+
         GoogleTextSearchResponse search = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .scheme("https")
@@ -39,6 +48,8 @@ public class GooglePlacesClient {
                         .queryParam("query", query)
                         .queryParam("language", "ko")
                         .queryParam("region", "KR")
+                        .queryParam("location", lat + "," + lng) // 위치 바이어스
+                        .queryParam("radius", 1200)              // 1.2km 반경
                         .queryParam("key", apiKey)
                         .build())
                 .accept(MediaType.APPLICATION_JSON)
@@ -62,15 +73,14 @@ public class GooglePlacesClient {
 
         String placeId = search.getResults().get(0).getPlace_id();
 
-        // 2) Details — website/url 등 수집
+        // 2) Details — 필요한 필드만 최소 조회(비용 절감)
         GoogleDetailsResponse details = webClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .scheme("https")
                         .host("maps.googleapis.com")
                         .path("/maps/api/place/details/json")
                         .queryParam("place_id", placeId)
-                        .queryParam("fields",
-                                "place_id,name,types,geometry,formatted_address,rating,user_ratings_total,url,website")
+                        .queryParam("fields", "place_id,name,types,geometry,formatted_address,rating,user_ratings_total,url,website,current_opening_hours")
                         .queryParam("language", "ko")
                         .queryParam("key", apiKey)
                         .build())
@@ -92,17 +102,27 @@ public class GooglePlacesClient {
         var r = details.getResult();
         Set<String> types = r.getTypes() != null ? new LinkedHashSet<>(r.getTypes()) : null;
 
-        return Optional.of(PlaceResponse.builder()
-                .placeId(r.getPlace_id())
-                .name(r.getName())
-                .category(CategoryMapper.fromGoogleTypes(types))
-                .lat(r.getGeometry().getLocation().getLat())
-                .lng(r.getGeometry().getLocation().getLng())
-                .address(r.getFormatted_address())
+        return Optional.of(GoogleEnrichment.builder()
+                .googlePlaceId(r.getPlace_id())
                 .rating(r.getRating() == null ? null : r.getRating().floatValue())
                 .reviewCount(r.getUser_ratings_total())
-                .homepageUrl(r.getWebsite()) // ✅ 공식 홈페이지
-                .mapUrl(r.getUrl())          // ✅ 구글 지도 링크
+                .website(r.getWebsite())
+                .mapUrl(r.getUrl())
+                .openNow(r.getCurrent_opening_hours() == null ? null : r.getCurrent_opening_hours().getOpen_now())
+                .googleCategoryTypes(types)
                 .build());
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    public static class GoogleEnrichment {
+        private String googlePlaceId;
+        private Float rating;
+        private Integer reviewCount;
+        private String website;
+        private String mapUrl;
+        private Boolean openNow;
+        private Set<String> googleCategoryTypes; // 필요 시 내부 매핑에 활용 가능
     }
 }

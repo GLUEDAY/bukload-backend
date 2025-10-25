@@ -24,8 +24,8 @@ public final class CategoryMapper {
         switch (code) {
             case "CE7": return "CAFE";
             case "FD6": return "FOOD";
-            case "AD5": return "STAY";        // 숙박
-            case "AT4": return "LAND MARK";   // 관광명소
+            case "AD5": return "STAY";
+            case "AT4": return "LAND MARK";
             default: return null;
         }
     }

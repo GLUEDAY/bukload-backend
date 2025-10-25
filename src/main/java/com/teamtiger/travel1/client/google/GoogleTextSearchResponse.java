@@ -2,14 +2,13 @@ package com.teamtiger.travel1.client.google;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
-
 import java.util.List;
 
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class GoogleTextSearchResponse {
-    private String status;          // 상태 코드 (OK, ZERO_RESULTS, REQUEST_DENIED 등)
-    private String error_message;   // 에러 메시지(거절 사유 등)
+    private String status;          // OK, ZERO_RESULTS, REQUEST_DENIED 등
+    private String error_message;   // 에러 메시지
     private List<Result> results;
 
     @Data @JsonIgnoreProperties(ignoreUnknown = true)

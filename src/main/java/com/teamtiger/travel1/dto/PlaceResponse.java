@@ -5,14 +5,19 @@ import lombok.*;
 @Getter @Setter
 @AllArgsConstructor @NoArgsConstructor @Builder
 public class PlaceResponse {
-    private String placeId;
+    private String placeId;      // 우선: 카카오 id (fallback). 구글 place_id일 수 있음
     private String name;
-    private String category;      // ENUM 매핑된 문자열: CAFE/FOOD/STAY/LAND MARK 등
+    private String category;     // CAFE/FOOD/STAY/LAND MARK 등
     private double lat;
     private double lng;
     private String address;
-    private Float rating;         // 구글에서만 제공(평균 평점)
-    private Integer reviewCount;  // 구글에서만 제공(리뷰 수)
-    private String homepageUrl;   // ✅ 공식 홈페이지(google: website)
-    private String mapUrl;        // ✅ 지도 페이지(google: url, kakao: place_url)
+
+    // ===== 구글 보강 전용 필드 =====
+    private Float rating;         // Google rating
+    private Integer reviewCount;  // Google user_ratings_total
+    private String homepageUrl;   // Google website
+    private String mapUrl;        // Google url or Kakao place_url
+
+    // 선택: 현재 영업중 여부(구글 only). 필요 없으면 제거 가능
+    private Boolean openNow;
 }
