@@ -1,0 +1,83 @@
+package com.teamtiger.travel1.client.kakao;
+
+import com.teamtiger.travel1.dto.PlaceResponse;
+import com.teamtiger.travel1.util.CategoryMapper;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import java.util.Optional;
+
+@Component
+@RequiredArgsConstructor
+public class KakaoLocalClient {
+
+    private final WebClient webClient;
+
+    @Value("${app.providers.kakao.rest-api-key:}")
+    private String restApiKey;
+
+    private boolean enabled() { return StringUtils.hasText(restApiKey); }
+
+    @PostConstruct
+    void checkKeys() {
+        System.out.println("[KakaoKey?] " + (restApiKey==null||restApiKey.isBlank()?"EMPTY":"****"+restApiKey.substring(Math.max(0, restApiKey.length()-4))));
+    }
+
+    public Optional<PlaceResponse> searchOneByKeyword(String query) {
+        if (!enabled()) {
+            System.err.println("[Kakao] disabled (no restApiKey)");
+            return Optional.empty();
+        }
+
+        KakaoSearchResponse res = webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .scheme("https")
+                        .host("dapi.kakao.com")
+                        .path("/v2/local/search/keyword.json")
+                        .queryParam("query", query) // 자동 인코딩
+                        .build())
+                .accept(MediaType.APPLICATION_JSON)
+                .header("Authorization", "KakaoAK " + restApiKey)
+
+                // ✅ 여기 추가: 403 발생 시 바디까지 출력되도록
+                .retrieve()
+                .onStatus(s -> s.value() == 403, cr -> cr.bodyToMono(String.class)
+                        .map(body -> new RuntimeException("[Kakao 403] " + body)))
+
+                // JSON -> 객체 변환
+                .bodyToMono(KakaoSearchResponse.class)
+                .block();
+
+        if (res == null) {
+            System.err.println("[Kakao] null response");
+            return Optional.empty();
+        }
+        if (res.getDocuments() == null || res.getDocuments().isEmpty()) {
+            System.err.println("[Kakao] ZERO_RESULTS for query=" + query);
+            return Optional.empty();
+        }
+
+        var d = res.getDocuments().get(0);
+
+        return Optional.of(PlaceResponse.builder()
+                .placeId(d.getId())
+                .name(d.getPlace_name())
+                .category(CategoryMapper.fromKakaoGroup(d.getCategory_group_code()))
+                .lat(Double.parseDouble(d.getY()))
+                .lng(Double.parseDouble(d.getX()))
+                .address((d.getRoad_address_name() != null && !d.getRoad_address_name().isBlank())
+                        ? d.getRoad_address_name()
+                        : d.getAddress_name())
+                .rating(null)
+                .reviewCount(null)
+                .homepageUrl(null)
+                .mapUrl(d.getPlace_url())
+                .openNow(null)
+                .build());
+    }
+}
