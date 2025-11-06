@@ -1,22 +1,33 @@
+# src/main/resources/application.yml
 spring:
+  application:
+    name: bukload-backend
+
+  profiles:
+    default: local   # 기본 실행 프로필(local)
+
   datasource:
-    url: jdbc:mysql://localhost:3306/travel?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: root
-    password: 10521004ss!
+    url: ${DB_URL}            # 예) jdbc:mysql://localhost:3306/travel?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: ${DB_USERNAME}  # 예) root
+    password: ${DB_PASSWORD}  # 예) (비밀번호)
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${JPA_DDL_AUTO:update}   # prod에서는 validate 권장
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
+server:
+  port: ${SERVER_PORT:8080}
+
 jwt:
-  secret: "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_KEY_256BIT"
-  accessExpiration: 900000      # 15분
-  refreshExpiration: 1209600000 # 14일
+  secret: ${JWT_SECRET}                       # 반드시 충분히 긴 랜덤 256bit 문자열
+  accessExpiration: ${JWT_ACCESS_EXP:900000}  # 15분 (ms)
+  refreshExpiration: ${JWT_REFRESH_EXP:1209600000}  # 14일 (ms)
+
 app:
   providers:
     kakao:
@@ -29,9 +40,5 @@ app:
 odsay:
   apiKey: ${ODSAY_API_KEY}
   baseUrl: https://api.odsay.com/v1/api
-  connectTimeoutMs: 3000
-  readTimeoutMs: 5000
-
-server:
-  port: 8080
-
+  connectTimeoutMs: ${ODSAY_CONNECT_TIMEOUT_MS:3000}
+  readTimeoutMs: ${ODSAY_READ_TIMEOUT_MS:5000}
