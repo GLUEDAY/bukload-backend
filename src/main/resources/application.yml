@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:bukload;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+server:
+  port: 8081
+
+ai:
+  gemini:
+    endpoint: https://generativelanguage.googleapis.com/v1 # v1beta -> v1로 변경
+    # 모델명을 하나로 통일하거나, 최신 모델 alias로 변경
+    model-region: gemini-2.5-flash
+    model-courses: gemini-2.5-flash
+    api-key: ${GEMINI_API_KEY}
