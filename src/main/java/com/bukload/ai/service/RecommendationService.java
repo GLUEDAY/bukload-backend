@@ -13,6 +13,8 @@ import com.bukload.ai.dto.response.CourseDetailRes;
 import com.bukload.ai.dto.response.CourseSummaryRes;
 import com.bukload.ai.dto.response.RegionRecommendRes;
 import com.bukload.ai.service.llm.GeminiClient;
+import com.bukload.ai.service.preset.CoursePresetProvider;
+import com.bukload.ai.service.preset.RegionPresetProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -33,33 +35,36 @@ public class RecommendationService {
     private final GeminiClient geminiClient;
     private final GeminiProperties props;
 
+    // 새로 추가된 프리셋
+    private final RegionPresetProvider regionPresetProvider;
+    private final CoursePresetProvider coursePresetProvider;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
-     * Gemini 응답 텍스트에서 순수한 JSON 블록만 추출하여 파싱 안정성 강화
+     * Gemini 응답 텍스트에서 순수한 JSON 블록만 추출
      */
     private String extractJson(String rawText) {
         if (rawText == null || rawText.isBlank()) return "";
-        // 첫 번째 '{'와 마지막 '}'를 찾아 그 사이의 문자열만 추출
         int start = rawText.indexOf('{');
         int end = rawText.lastIndexOf('}');
 
         if (start != -1 && end != -1 && end > start) {
-            // '```json' 또는 '```' 마크다운 블록이 있을 경우 시작 위치 조정
             int codeBlockStart = rawText.toLowerCase().indexOf("```");
             if (codeBlockStart != -1 && codeBlockStart < start) {
-                // '```json' 다음이나 '```' 다음의 '{'를 다시 찾음
                 start = rawText.indexOf('{', codeBlockStart);
             }
-
             if (start != -1 && end > start) {
                 return rawText.substring(start, end + 1).trim();
             }
         }
-        return ""; // 유효한 JSON 블록을 찾지 못하면 빈 문자열 반환
+        return "";
     }
 
-    public Long createTravelRequest(CreateTravelRequestReq req){
+    /**
+     * 여행 요청 생성
+     */
+    public Long createTravelRequest(CreateTravelRequestReq req) {
         TravelRequest tr = TravelRequest.builder()
                 .themeId(req.getThemeId())
                 .departureLocation(req.getDepartureLocation())
@@ -75,8 +80,11 @@ public class RecommendationService {
         return tr.getId();
     }
 
-    /** 지역 우선 추천 (Gemini 실제 응답 보기 버전) */
-    public RegionRecommendRes recommendRegion(Long requestId){
+    /**
+     * 지역 우선 추천
+     * - Gemini가 뭘 줘도 우리는 의정부/구리/양주/동두천 중 하나로 스냅시킨다.
+     */
+    public RegionRecommendRes recommendRegion(Long requestId) {
         TravelRequest tr = travelRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("request not found"));
 
@@ -104,14 +112,14 @@ public class RecommendationService {
 
         String rawJson = null;
         try {
-            // 1) LLM 호출 및 블로킹 (API 오류 시 예외 발생)
             rawJson = geminiClient.generate(props.getModelRegion(), prompt).block();
         } catch (Exception e) {
-            System.out.println("[RecommendationService] ❗ Gemini API 호출 중 예외 발생: " + e.getMessage());
-            // 오류 발생 시 null로 처리하여 Fallback
+            System.out.println("[RecommendationService] ❗ Gemini API 호출 중 예외: " + e.getMessage());
         }
 
-        // 2) 순수한 JSON만 추출 후 파싱 시도
+        RegionRecommendRes picked = null;
+
+        // 1) LLM이 뭔가 줬으면 → 우리가 지원하는 지역으로 스냅
         if (rawJson != null && !rawJson.isBlank()) {
             String json = extractJson(rawJson);
             if (!json.isBlank()) {
@@ -119,63 +127,75 @@ public class RecommendationService {
                     JsonNode node = mapper.readTree(json);
                     String region = node.path("region").asText();
                     String anchorId = node.path("anchorId").asText();
-                    String comment = node.path("comment").asText("추천 지역입니다.");
-                    List<String> tags = mapper.convertValue(node.path("tags"), List.class);
-
-                    // 엔티티에도 저장
-                    tr.setRegionName(region);
-                    tr.setAnchorId(anchorId);
-                    travelRequestRepository.save(tr); // 변경사항 저장
-
-                    return RegionRecommendRes.builder()
-                            .region(region)
-                            .anchorId(anchorId)
-                            .comment(comment)
-                            .tags(tags)
-                            .build();
+                    // 여기가 핵심: 우리 서비스에서 지원하는 anchor로 강제
+                    picked = regionPresetProvider.snapToSupported(
+                            (anchorId != null && !anchorId.isBlank()) ? anchorId : region
+                    );
                 } catch (Exception e) {
-                    System.out.println("[RecommendationService] ⚠️ Gemini 응답 파싱 실패 → fallback 사용: " + e.getMessage());
+                    System.out.println("[RecommendationService] ⚠️ Gemini 응답 파싱 실패 -> 프리셋으로 전환: " + e.getMessage());
                 }
             }
         }
 
-        // 3) LLM이 비었거나, JSON 파싱 안 된 경우 → 더미 (Fallback)
-        final String fallbackRegion = "양평군";
-        final String fallbackAnchor = "yangpyeong";
+        // 2) LLM이 비정상이거나 파싱 실패 → 프리셋 기본값
+        if (picked == null) {
+            picked = regionPresetProvider.snapToSupported(null); // 기본(구리) 같은 것
+        }
 
-        tr.setRegionName(fallbackRegion);
-        tr.setAnchorId(fallbackAnchor);
-        travelRequestRepository.save(tr); // 변경사항 저장
+        // 3) 요청에도 저장
+        tr.setRegionName(picked.getRegion());
+        tr.setAnchorId(picked.getAnchorId());
+        travelRequestRepository.save(tr);
 
-        return RegionRecommendRes.builder()
-                .region(fallbackRegion)
-                .anchorId(fallbackAnchor)
-                .comment("감성 여행지 (Fallback)")
-                .tags(List.of("자연","카페"))
-                .build();
+        return picked;
     }
 
-    /** 코스 추천 */
-    public CourseSummaryRes recommendCourses(RecommendCoursesReq req){
+    /**
+     * 코스 추천
+     * 1순위: anchorId에 해당하는 프리셋 코스 있으면 그거 바로 리턴
+     * 2순위: 프리셋 없으면 Gemini 호출해서 파싱
+     * 3순위: 그래도 실패하면 기존 더미
+     */
+    public CourseSummaryRes recommendCourses(RecommendCoursesReq req) {
         TravelRequest tr = travelRequestRepository.findById(req.getRequestId())
                 .orElseThrow(() -> new IllegalArgumentException("request not found"));
 
-        String region = tr.getRegionName() != null ? tr.getRegionName() : "양평군";
-        String anchor = (req.getAnchorId()!=null)? req.getAnchorId()
-                : (tr.getAnchorId()!=null? tr.getAnchorId() : "yangpyeong");
+        // anchor / region 결정
+        String anchor = (req.getAnchorId() != null && !req.getAnchorId().isBlank())
+                ? req.getAnchorId()
+                : tr.getAnchorId();
 
+        if (anchor == null) {
+            // 혹시 여행요청에 anchor를 못박아두지 못한 경우 안전장치
+            anchor = "guri";
+        }
+
+        String region = (tr.getRegionName() != null) ? tr.getRegionName() : "구리시";
+
+        // 1) 프리셋 먼저 조회
+        var presetCourses = coursePresetProvider.findByAnchor(anchor);
+        if (!presetCourses.isEmpty()) {
+            return CourseSummaryRes.builder()
+                    .region(region)
+                    .courses(presetCourses)
+                    .build();
+        }
+
+        // 2) 프리셋이 없으면 Gemini로 생성
         String prompt = """
                 너는 여행 코스 설계자야. 지역: %s(앵커: %s)
-                아래 프로필을 보고 3개 이상의 코스 후보를 생성해.
-                각 코스는 title, description, places(이름/카테고리/위경도), totalDistance, estimatedTime, tags, localCurrencyMerchants 로 JSON 배열로만 반환해.
-                스키마 예시는 아래와 같다.
+                아래 사용자의 프로필을 보고 3개 이상의 코스 후보를 생성해.
+                반드시 아래 스키마의 JSON으로만 반환해.
+
                 {
                   "region": "%s",
                   "courses": [
                     {
                       "title": "...",
                       "description": "...",
-                      "places": [{"name":"...", "category":"...", "lat":37.5, "lng":127.3}],
+                      "places": [
+                        {"name":"...", "category":"...", "lat":37.5, "lng":127.3}
+                      ],
                       "totalDistance": "18km",
                       "estimatedTime": "5시간",
                       "tags": ["자연","카페"],
@@ -185,16 +205,24 @@ public class RecommendationService {
                 }
 
                 사용자 입력:
-                - 기간: %d일, 예산: %d원, 성별: %s, 동행: %s, 스타일: %s, 추가요청: %s
-                """.formatted(region, anchor, region,
-                tr.getTravelDays(), tr.getBudget(), tr.getGender(), tr.getCompanions(),
-                tr.getStyle(), tr.getAdditionalRequest());
+                - 기간: %d일
+                - 예산: %d원
+                - 성별: %s
+                - 동행: %s
+                - 스타일: %s
+                - 추가요청: %s
+                """.formatted(
+                region, anchor, region,
+                tr.getTravelDays(), tr.getBudget(),
+                tr.getGender(), tr.getCompanions(),
+                tr.getStyle(), tr.getAdditionalRequest()
+        );
 
         String rawJson = null;
         try {
             rawJson = geminiClient.generate(props.getModelCourses(), prompt).block();
         } catch (Exception e) {
-            System.out.println("[RecommendationService] ❗ Gemini API 호출 중 예외 발생: " + e.getMessage());
+            System.out.println("[RecommendationService] ❗ Gemini API 호출 중 예외: " + e.getMessage());
         }
 
         if (rawJson != null && !rawJson.isBlank()) {
@@ -205,8 +233,7 @@ public class RecommendationService {
                     JsonNode nodes = root.path("courses");
                     List<CourseSummaryRes.CourseCard> list = new ArrayList<>();
 
-                    // nodes가 배열이 아니거나 비어있으면 건너뛰기
-                    if(nodes.isArray() && nodes.size() > 0) {
+                    if (nodes.isArray() && nodes.size() > 0) {
                         nodes.forEach(n -> {
                             List<CourseSummaryRes.PlaceBrief> places = new ArrayList<>();
                             n.path("places").forEach(p -> {
@@ -244,14 +271,20 @@ public class RecommendationService {
             }
         }
 
-        // 실패 시 더미 (Fallback)
+        // 3) 여기까지 왔으면 진짜로 아무 것도 못 받은 경우 → 더미
         return CourseSummaryRes.builder()
                 .region(region)
-                .courses(List.of(dummyCourse("감성 힐링 코스 (Fallback)"), dummyCourse("자연&카페 원데이 (Fallback)")))
+                .courses(List.of(
+                        dummyCourse("감성 힐링 코스 (Fallback)"),
+                        dummyCourse("자연&카페 원데이 (Fallback)")
+                ))
                 .build();
     }
 
-    public CourseDetailRes saveCourse(SaveCourseReq req){
+    /**
+     * 추천 코스 확정/저장
+     */
+    public CourseDetailRes saveCourse(SaveCourseReq req) {
         TravelRequest tr = travelRequestRepository.findById(req.getRequestId())
                 .orElseThrow(() -> new IllegalArgumentException("request not found"));
 
@@ -263,6 +296,7 @@ public class RecommendationService {
                 .build();
 
         List<double[]> path = new ArrayList<>();
+
         req.getPlaces().stream()
                 .sorted(Comparator.comparingInt(SaveCourseReq.PlaceItem::getOrderNo))
                 .forEach(p -> {
@@ -277,7 +311,8 @@ public class RecommendationService {
                             .transportMode(p.getTransportMode())
                             .build();
                     course.getSegments().add(seg);
-                    if (p.getLat()!=null && p.getLng()!=null) {
+
+                    if (p.getLat() != null && p.getLng() != null) {
                         path.add(new double[]{p.getLat(), p.getLng()});
                     }
                 });
@@ -297,8 +332,8 @@ public class RecommendationService {
                 .region(tr.getRegionName())
                 .totalDistanceKm(saved.getTotalDistanceKm())
                 .estimatedMinutes(saved.getEstimatedMinutes())
-                .segments(saved.getSegments().stream().map(s ->
-                        CourseDetailRes.Segment.builder()
+                .segments(saved.getSegments().stream()
+                        .map(s -> CourseDetailRes.Segment.builder()
                                 .orderNo(s.getOrderNo())
                                 .placeId(s.getPlaceId())
                                 .placeName(s.getPlaceName())
@@ -306,11 +341,15 @@ public class RecommendationService {
                                 .lat(s.getLat())
                                 .lng(s.getLng())
                                 .transportMode(s.getTransportMode())
-                                .build()).toList())
+                                .build())
+                        .toList())
                 .build();
     }
 
-    private CourseSummaryRes.CourseCard dummyCourse(String title){
+    /**
+     * LLM 실패용 더미
+     */
+    private CourseSummaryRes.CourseCard dummyCourse(String title) {
         List<CourseSummaryRes.PlaceBrief> places = List.of(
                 CourseSummaryRes.PlaceBrief.builder().name("두물머리").category("명소").lat(37.58).lng(127.31).build(),
                 CourseSummaryRes.PlaceBrief.builder().name("카페 한강뷰").category("카페").lat(37.57).lng(127.32).build(),
@@ -323,7 +362,7 @@ public class RecommendationService {
                 .places(places)
                 .totalDistance("18km")
                 .estimatedTime("5시간")
-                .tags(List.of("자연","카페"))
+                .tags(List.of("자연", "카페"))
                 .localCurrencyMerchants(12)
                 .build();
     }
