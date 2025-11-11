@@ -3,7 +3,6 @@ package com.teamtiger.travel1.client.google;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
-
 import java.util.List;
 
 @Data
@@ -22,32 +21,42 @@ public class GoogleDetailsResponse {
         private List<String> types;
         private Double rating;
         private Integer user_ratings_total;
-        private String url;      // Google Maps URL
-        private String website;  // 공식 홈페이지
+        private String url;
+        private String website;
+        private String formatted_phone_number;
 
-        // ✅ 기본/현재 영업시간 모두 받을 수 있게 정의
+        // ✅ 사진 메타데이터
+        private List<Photo> photos;
+
+        // 영업시간
         private OpeningHours opening_hours;
         private OpeningHours current_opening_hours;
+    }
+
+    // ✅ Photo 매핑
+    @Data @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Photo {
+        private Integer width;
+        private Integer height;
+        private String photo_reference;
+        private List<String> html_attributions;
     }
 
     @Data @JsonIgnoreProperties(ignoreUnknown = true)
     public static class OpeningHours {
         private Boolean open_now;
-        // "Monday: 9:00 AM – 6:00 PM" 같은 텍스트
         private List<String> weekday_text;
-        // 디테일한 시간(HHmm, 요일 인덱스)
         private List<Period> periods;
-
         @Data @JsonIgnoreProperties(ignoreUnknown = true)
         public static class Period {
-            private TimeDetail open;  // day(0=Sun..6=Sat), time("0930")
-            private TimeDetail close; // day(0=Sun..6=Sat), time("1830")
+            private TimeDetail open;
+            private TimeDetail close;
         }
         @Data @JsonIgnoreProperties(ignoreUnknown = true)
         public static class TimeDetail {
             private Integer day;
-            private String time; // "0930"
-            private String date; // 있을 때만 옴(예외일)
+            private String time;
+            private String date;
         }
     }
 }

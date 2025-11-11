@@ -1,7 +1,7 @@
+// com/teamtiger/travel1/dto/PlaceResponse.java
 package com.teamtiger.travel1.dto;
 
 import lombok.*;
-
 import java.util.List;
 
 @Getter @Setter
@@ -13,6 +13,7 @@ public class PlaceResponse {
     private double lat;
     private double lng;
     private String address;
+    private String phone;
 
     // ===== Google 보강 필드 =====
     private Float rating;
@@ -20,7 +21,8 @@ public class PlaceResponse {
     private String homepageUrl;
     private String mapUrl;
     private Boolean openNow;
-
-    // ✅ 추가: 요일별 영업시간(“Monday: 9:00 AM – 6:00 PM” 형식)
     private List<String> openingHoursText;
+
+    // ✅ 대표사진(프록시 URL). 프론트는 이 URL만 <img src=...>로 쓰면 됨.
+    private String representativePhotoUrl;
 }

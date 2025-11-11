@@ -78,6 +78,7 @@ public class KakaoLocalClient {
                 .homepageUrl(null)
                 .mapUrl(d.getPlace_url())
                 .openNow(null)
+                .phone(d.getPhone())
                 .build());
     }
 }

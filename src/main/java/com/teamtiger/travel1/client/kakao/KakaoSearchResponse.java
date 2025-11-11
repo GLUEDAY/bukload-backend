@@ -22,5 +22,6 @@ public class KakaoSearchResponse {
         private String x; // lng
         private String y; // lat
         private String place_url; // 카카오 지도 링크
+        private String phone;
     }
 }

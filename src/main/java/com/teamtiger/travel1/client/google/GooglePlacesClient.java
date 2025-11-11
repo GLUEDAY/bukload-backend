@@ -1,3 +1,4 @@
+// com/teamtiger/travel1/client/google/GooglePlacesClient.java
 package com.teamtiger.travel1.client.google;
 
 import lombok.AllArgsConstructor;
@@ -10,11 +11,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import java.util.LinkedHashSet;
-import java.util.Optional;
-import java.util.Set;
-import jakarta.annotation.PostConstruct;
+import java.util.*;
 
+import jakarta.annotation.PostConstruct;
 
 @Component
 @RequiredArgsConstructor
@@ -34,12 +33,12 @@ public class GooglePlacesClient {
                         ? "❌ EMPTY or not loaded"
                         : "✅ ****" + apiKey.substring(Math.max(0, apiKey.length() - 4))));
     }
+
     public Optional<GoogleEnrichment> enrichByNameAndCoords(String name, String address, double lat, double lng) {
         if (!enabled()) {
             System.err.println("[Google] disabled (no apiKey)");
             return Optional.empty();
         }
-
         String query = (address == null || address.isBlank()) ? name : (name + " " + address);
 
         // ---------- Text Search ----------
@@ -57,7 +56,6 @@ public class GooglePlacesClient {
                         .build())
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
-                // ✅ 여기 추가: 403/4xx/5xx 응답 바디 로깅
                 .onStatus(s -> s.value() == 403, cr -> cr.bodyToMono(String.class)
                         .map(body -> new RuntimeException("[Google TextSearch 403] " + body)))
                 .onStatus(s -> s.is4xxClientError() || s.is5xxServerError(), cr -> cr.bodyToMono(String.class)
@@ -65,17 +63,10 @@ public class GooglePlacesClient {
                 .bodyToMono(GoogleTextSearchResponse.class)
                 .block();
 
-        if (search == null) {
-            System.err.println("[Google TextSearch] null response");
-            return Optional.empty();
-        }
-        if (search.getStatus() != null && !"OK".equals(search.getStatus())) {
-            System.err.println("[Google TextSearch] status=" + search.getStatus()
-                    + " error=" + search.getError_message());
-            return Optional.empty();
-        }
-        if (search.getResults() == null || search.getResults().isEmpty()) {
-            System.err.println("[Google TextSearch] ZERO_RESULTS for query=" + query);
+        if (search == null || search.getResults() == null || search.getResults().isEmpty()
+                || (search.getStatus() != null && !"OK".equals(search.getStatus()))) {
+            System.err.println("[Google TextSearch] status=" + (search==null? "null":search.getStatus())
+                    + " error=" + (search==null? "null":search.getError_message()));
             return Optional.empty();
         }
 
@@ -88,18 +79,15 @@ public class GooglePlacesClient {
                         .host("maps.googleapis.com")
                         .path("/maps/api/place/details/json")
                         .queryParam("place_id", placeId)
-                        // ✅ opening_hours / current_opening_hours 모두 요청
-                        .queryParam("fields",
-                                String.join(",",
-                                        "place_id","name","types","geometry","formatted_address",
-                                        "rating","user_ratings_total","url","website",
-                                        "opening_hours",
-                                        "opening_hours.weekday_text",
-                                        "opening_hours.periods",
-                                        "current_opening_hours",
-                                        "current_opening_hours.weekday_text",
-                                        "current_opening_hours.periods"
-                                ))
+                        .queryParam("fields", String.join(",",
+                                "place_id","name","types","geometry","formatted_address",
+                                "rating","user_ratings_total","url","website",
+                                "formatted_phone_number",
+                                // ✅ photos만 추가 (대표사진 1장만 쓸거라 ref만 필요)
+                                "photos","photos.photo_reference",
+                                "opening_hours","opening_hours.weekday_text","opening_hours.periods",
+                                "current_opening_hours","current_opening_hours.weekday_text","current_opening_hours.periods"
+                        ))
                         .queryParam("language", "ko")
                         .queryParam("key", apiKey)
                         .build())
@@ -111,25 +99,26 @@ public class GooglePlacesClient {
                         .map(body -> new RuntimeException("[Google Details " + cr.statusCode().value() + "] " + body)))
                 .bodyToMono(GoogleDetailsResponse.class)
                 .block();
-        if (details == null) {
-            System.err.println("[Google Details] null response");
-            return Optional.empty();
-        }
-        if (details.getStatus() != null && !"OK".equals(details.getStatus())) {
-            System.err.println("[Google Details] status=" + details.getStatus()
-                    + " error=" + details.getError_message());
+
+        if (details == null || (details.getStatus()!=null && !"OK".equals(details.getStatus()))) {
+            System.err.println("[Google Details] status=" + (details==null? "null" : details.getStatus())
+                    + " error=" + (details==null? "null" : details.getError_message()));
             return Optional.empty();
         }
 
         var r = details.getResult();
-        java.util.Set<String> types =
-                (r.getTypes() != null) ? new java.util.LinkedHashSet<>(r.getTypes()) : null;
+        Set<String> types = (r.getTypes() != null) ? new LinkedHashSet<>(r.getTypes()) : null;
 
-        // ✅ 텍스트 우선순위: current_opening_hours -> opening_hours
         var weekdayText =
                 (r.getCurrent_opening_hours() != null && r.getCurrent_opening_hours().getWeekday_text() != null && !r.getCurrent_opening_hours().getWeekday_text().isEmpty())
                         ? r.getCurrent_opening_hours().getWeekday_text()
                         : (r.getOpening_hours() != null ? r.getOpening_hours().getWeekday_text() : null);
+
+        // ✅ 대표사진 ref만 추출
+        String representativePhotoRef = null;
+        if (r.getPhotos() != null && !r.getPhotos().isEmpty() && r.getPhotos().get(0).getPhoto_reference() != null) {
+            representativePhotoRef = r.getPhotos().get(0).getPhoto_reference();
+        }
 
         return Optional.of(GoogleEnrichment.builder()
                 .googlePlaceId(r.getPlace_id())
@@ -143,10 +132,11 @@ public class GooglePlacesClient {
                                 : (r.getOpening_hours() != null ? r.getOpening_hours().getOpen_now() : null)
                 )
                 .googleCategoryTypes(types)
-                .weekdayText(weekdayText) // ✅ 추가
+                .weekdayText(weekdayText)
+                .formattedPhone(r.getFormatted_phone_number())
+                .representativePhotoRef(representativePhotoRef)
                 .build());
     }
-
 
     @Data @Builder
     @AllArgsConstructor
@@ -157,8 +147,11 @@ public class GooglePlacesClient {
         private String website;
         private String mapUrl;
         private Boolean openNow;
-        private java.util.Set<String> googleCategoryTypes;
-        // ✅ 추가: 요일별 텍스트
-        private java.util.List<String> weekdayText;
+        private Set<String> googleCategoryTypes;
+        private List<String> weekdayText;
+        private String formattedPhone;
+
+        // ✅ 대표사진 ref (단일)
+        private String representativePhotoRef;
     }
 }
