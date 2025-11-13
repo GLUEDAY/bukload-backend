@@ -1,0 +1,47 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.4'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.teamtiger'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // WebFlux (WebClient 쓸 거면 이거 유지)
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // Bean Validation (요청 DTO 검증용)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // 문자열 유틸
+    implementation 'org.apache.commons:commons-text:1.10.0'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // Test
+    testImplementation('org.springframework.boot:spring-boot-starter-test') {
+        // JUnit 5만 쓰도록 Vintage 엔진 제거
+        exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+    }
+    // WebFlux용 테스트 (StepVerifier 등)
+    testImplementation 'io.projectreactor:reactor-test'
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
