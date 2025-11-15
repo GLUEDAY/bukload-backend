@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: test
+
+  datasource:
+    url: dbc:mysql://localhost:3306/likelion
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 1234
+
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        use_sql_comments: true
+
+server:
+  address: 0.0.0.0
+  port: 8080
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+ai:
+  gemini:
+    endpoint: https://generativelanguage.googleapis.com/v1
+    model-region: gemini-2.5-flash
+    model-courses: gemini-2.5-flash
+    api-key: ${GEMINI_API_KEY}

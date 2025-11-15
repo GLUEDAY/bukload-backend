@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: bukload-merge
+
+  profiles:
+    #active: prod
+    default: local
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  devtools:
+    restart:
+      enabled: true
+
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+
+server:
+  address: 0.0.0.0
+  port: 8080
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
+
+jwt:
+  secret: ${JWT_SECRET}
+  accessExpiration: ${JWT_ACCESS_EXP:1209600000}
+  refreshExpiration: ${JWT_REFRESH_EXP:1209600000}
+
+ai:
+  gemini:
+    endpoint: https://generativelanguage.googleapis.com/v1
+    model-region: gemini-2.5-flash
+    model-courses: gemini-2.5-flash
+    api-key: ${GEMINI_API_KEY}
+
+app:
+  providers:
+    kakao:
+      rest-api-key: ${KAKAO_REST_API_KEY}
+      base-url: https://dapi.kakao.com
+    google:
+      api-key: ${GOOGLE_API_KEY}
+      base-url: https://maps.googleapis.com
+
+odsay:
+  apiKey: ${ODSAY_API_KEY}
+  baseUrl: https://api.odsay.com/v1/api
+  connectTimeoutMs: ${ODSAY_CONNECT_TIMEOUT_MS:3000}
+  readTimeoutMs: ${ODSAY_READ_TIMEOUT_MS:5000}
+
+cloud:
+  aws:
+    credentials:
+      access-key: ${app.s3.access-key}
+      secret-key: ${app.s3.secret-key}
+    s3:
+      bucket: ${app.s3.bucket}
+    region:
+      static: ${app.s3.region}
